@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Attendance</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Attendance">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#fff; --ink:#1b2430; --muted:#6b7686; --line:#e1e6ec;
+    --brand:#1f3a5f; --brand-ink:#fff; --ok:#1f8a4c; --danger:#c0392b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f141b; --card:#18202b; --ink:#e8edf3; --muted:#93a0b2; --line:#263142;
+           --brand:#4a7bb8; --brand-ink:#fff; --ok:#3cb371; --danger:#e57366; }
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  header{position:sticky;top:0;z-index:5;background:var(--brand);color:var(--brand-ink);
+    padding:calc(10px + env(safe-area-inset-top)) 16px 12px}
+  header h1{margin:0;font-size:18px;font-weight:600}
+  .sub{font-size:13px;opacity:.85;margin-top:2px}
+  main{padding:12px;max-width:640px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+  label.lbl{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+  select,input[type=text],input[type=date],input[type=password],input[type=search]{
+    width:100%;padding:11px 12px;font-size:16px;border-radius:10px;border:1px solid var(--line);
+    background:var(--bg);color:var(--ink)}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{flex:1}
+  button{font:inherit;border:0;border-radius:10px;padding:11px 14px;cursor:pointer;
+    background:var(--brand);color:var(--brand-ink);font-weight:600}
+  button.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  button.danger{background:var(--danger);color:#fff}
+  button:disabled{opacity:.45}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .count{font-size:14px;color:var(--muted);margin:2px 2px 10px;display:flex;justify-content:space-between}
+  .member{display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+  .member:last-child{border-bottom:0}
+  .member input{width:24px;height:24px;accent-color:var(--ok);flex:none}
+  .member span{flex:1;font-size:17px}
+  .member.on span{font-weight:600}
+  .empty{color:var(--muted);text-align:center;padding:24px 8px}
+  nav.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr);gap:6px;z-index:6}
+  nav.bar button{background:transparent;color:var(--ink);padding:6px 2px;font-size:11px;font-weight:600;
+    display:flex;flex-direction:column;align-items:center;gap:2px}
+  nav.bar button .ic{font-size:20px;line-height:1}
+  nav.bar button.primary{color:var(--brand)}
+  dialog{border:0;border-radius:14px;padding:0;width:min(92vw,420px);background:var(--card);color:var(--ink)}
+  dialog::backdrop{background:rgba(0,0,0,.5)}
+  .dlg{padding:16px}
+  .dlg h2{margin:0 0 12px;font-size:18px}
+  .dlg .field{margin-bottom:12px}
+  .dlg .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .pick{display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto}
+  .pick button{text-align:left;background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:500}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+  #toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;
+    transition:opacity .2s;z-index:20;max-width:90vw;text-align:center}
+  #toast.show{opacity:1}
+  .gear{position:absolute;right:12px;top:calc(8px + env(safe-area-inset-top));background:transparent;color:#fff;font-size:20px;padding:6px 10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Meeting Attendance</h1>
+  <div class="sub" id="hdrSub">No meeting selected</div>
+  <button class="gear" id="btnSettings" aria-label="Settings">⚙︎</button>
+</header>
+
+<main>
+  <div class="card">
+    <label class="lbl" for="meetingSel">Current meeting</label>
+    <select id="meetingSel"></select>
+  </div>
+  <div class="card">
+    <input type="search" id="filter" placeholder="Search members…" autocomplete="off">
+  </div>
+  <div class="count"><span id="presentCount"></span><span><a href="#" id="allLink" style="color:var(--brand)">All</a> · <a href="#" id="noneLink" style="color:var(--brand)">None</a></span></div>
+  <div class="card" id="memberList"></div>
+</main>
+
+<nav class="bar">
+  <button class="primary" id="btnNew"><span class="ic">＋</span>Record New</button>
+  <button id="btnDelMeeting"><span class="ic">🗑</span>Delete Meeting</button>
+  <button id="btnAdd"><span class="ic">👤</span>Add Member</button>
+  <button id="btnDelMember"><span class="ic">✕</span>Delete Member</button>
+  <button class="primary" id="btnGen"><span class="ic">⬆︎</span>Generate List</button>
+</nav>
+
+<dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+<div id="toast"></div>
+
+<script>
+(() => {
+  const STORE = "attendance.v1";
+  const CFG = "attendance.github.v1";
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  // ---------- state ----------
+  let state = load();
+  function load(){
+    try { const s = JSON.parse(localStorage.getItem(STORE)); if (s && s.members && s.meetings) return s; } catch(e){}
+    return { members: [], meetings: [], current: null };
+  }
+  function save(){ try { localStorage.setItem(STORE, JSON.stringify(state)); } catch(e){ toast("Could not save – storage full or blocked"); } }
+  function getCfg(){ try { return JSON.parse(localStorage.getItem(CFG)) || {}; } catch(e){ return {}; } }
+  function setCfg(c){ localStorage.setItem(CFG, JSON.stringify(c)); }
+
+  // ---------- helpers ----------
+  function yymmdd(d){
+    const y = String(d.getFullYear()).slice(-2), m = String(d.getMonth()+1).padStart(2,"0"), da = String(d.getDate()).padStart(2,"0");
+    return y+m+da;
+  }
+  function todayInput(){
+    const d = new Date();
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  function inputToYYMMDD(v){ return v.slice(2,4)+v.slice(5,7)+v.slice(8,10); }
+  const label = m => m.date + " " + m.name;
+  const byRecent = () => [...state.meetings].sort((a,b) => (b.date.localeCompare(a.date)) || (b.created - a.created));
+  const sortedMembers = () => [...state.members].sort((a,b) => a.name.localeCompare(b.name, undefined, {sensitivity:"base"}));
+  const current = () => state.meetings.find(m => m.id === state.current) || null;
+
+  let toastT;
+  function toast(msg){
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ---------- dialog ----------
+  const dlg = $("#dlg"), dlgBody = $("#dlgBody");
+  function openDlg(html, wire){ dlgBody.innerHTML = html; if (!dlg.open) dlg.showModal(); if (wire) wire(dlgBody); }
+  function closeDlg(){ if (dlg.open) dlg.close(); }
+  dlg.addEventListener("click", e => { if (e.target === dlg) closeDlg(); });
+
+  // ---------- render ----------
+  function render(){
+    const sel = $("#meetingSel");
+    const list = byRecent();
+    sel.innerHTML = list.length
+      ? list.map(m => `<option value="${m.id}" ${m.id===state.current?"selected":""}>${esc(label(m))}</option>`).join("")
+      : `<option value="">— no meetings yet —</option>`;
+    const cur = current();
+    $("#hdrSub").textContent = cur ? label(cur) : "No meeting selected";
+
+    const q = $("#filter").value.trim().toLowerCase();
+    const members = sortedMembers();
+    const box = $("#memberList");
+    if (!members.length){
+      box.innerHTML = `<div class="empty">No members yet.<br>Tap <b>Add Member</b> to begin.</div>`;
+    } else {
+      const shown = members.filter(m => m.name.toLowerCase().includes(q));
+      box.innerHTML = shown.length ? shown.map(m => {
+        const on = cur && cur.attendance[m.id];
+        return `<label class="member ${on?"on":""}"><input type="checkbox" data-id="${m.id}" ${on?"checked":""} ${cur?"":"disabled"}><span>${esc(m.name)}</span></label>`;
+      }).join("") : `<div class="empty">No match.</div>`;
+    }
+    const present = cur ? members.filter(m => cur.attendance[m.id]).length : 0;
+    $("#presentCount").textContent = cur ? `${present} of ${members.length} present` : (members.length ? `${members.length} members` : "");
+  }
+
+  $("#memberList").addEventListener("change", e => {
+    const cb = e.target.closest("input[data-id]"); const cur = current();
+    if (!cb || !cur) return;
+    if (cb.checked) cur.attendance[cb.dataset.id] = true; else delete cur.attendance[cb.dataset.id];
+    save(); render();
+  });
+  $("#meetingSel").addEventListener("change", e => { state.current = e.target.value || null; save(); render(); });
+  $("#filter").addEventListener("input", render);
+  $("#allLink").addEventListener("click", e => { e.preventDefault(); const c = current(); if(!c) return;
+    state.members.forEach(m => c.attendance[m.id] = true); save(); render(); });
+  $("#noneLink").addEventListener("click", e => { e.preventDefault(); const c = current(); if(!c) return;
+    c.attendance = {}; save(); render(); });
+
+  // ---------- Record New Meeting ----------
+  $("#btnNew").addEventListener("click", () => {
+    openDlg(`
+      <h2>Record New Meeting</h2>
+      <div class="field"><label class="lbl" for="nDate">Date</label><input type="date" id="nDate" value="${todayInput()}"></div>
+      <div class="field"><label class="lbl" for="nName">Meeting_Name</label><input type="text" id="nName" placeholder="e.g. Academic_Board" autocomplete="off" autocapitalize="words">
+        <div class="hint">Spaces become underscores. Column title will be “<span id="prev"></span>”.</div></div>
+      <div class="actions"><button class="sec" id="x">Cancel</button><button id="ok">Start meeting</button></div>`,
+    root => {
+      const nDate = root.querySelector("#nDate"), nName = root.querySelector("#nName"), prev = root.querySelector("#prev");
+      const clean = () => nName.value.trim().replace(/\s+/g,"_");
+      const upd = () => prev.textContent = (nDate.value ? inputToYYMMDD(nDate.value) : "YYMMDD") + " " + (clean() || "Meeting_Name");
+      nDate.oninput = nName.oninput = upd; upd(); setTimeout(() => nName.focus(), 50);
+      root.querySelector("#x").onclick = closeDlg;
+      const go = () => {
+        const name = clean();
+        if (!nDate.value) return toast("Pick a date");
+        if (!name) return toast("Enter a meeting name");
+        const date = inputToYYMMDD(nDate.value);
+        if (state.meetings.some(m => m.date === date && m.name.toLowerCase() === name.toLowerCase()))
+          return toast("That meeting already exists");
+        const m = { id: uid(), date, name, attendance: {}, created: Date.now() };
+        state.meetings.push(m); state.current = m.id; save(); closeDlg(); render();
+        toast("Meeting started: " + label(m));
+      };
+      root.querySelector("#ok").onclick = go;
+      nName.onkeydown = e => { if (e.key === "Enter") go(); };
+    });
+  });
+
+  // ---------- Delete Meeting (5 most recent) ----------
+  $("#btnDelMeeting").addEventListener("click", () => {
+    const recent = byRecent().slice(0,5);
+    if (!recent.length) return toast("No meetings to delete");
+    openDlg(`
+      <h2>Delete Meeting</h2>
+      <div class="hint" style="margin:-6px 0 10px">Showing the 5 most recent meetings.</div>
+      <div class="pick">${recent.map(m => `<button data-id="${m.id}">${esc(label(m))}</button>`).join("")}</div>
+      <div class="actions"><button class="sec" id="x">Cancel</button></div>`,
+    root => {
+      root.querySelector("#x").onclick = closeDlg;
+      root.querySelectorAll(".pick button").forEach(b => b.onclick = () => confirmDeleteMeeting(b.dataset.id));
+    });
+  });
+  function confirmDeleteMeeting(id){
+    const m = state.meetings.find(x => x.id === id); if (!m) return;
+    openDlg(`
+      <h2>Delete this meeting?</h2>
+      <p><b>${esc(label(m))}</b><br>Its attendance data will be removed. This can't be undone.</p>
+      <div class="actions"><button class="sec" id="x">Cancel</button><button class="danger" id="ok">Delete</button></div>`,
+    root => {
+      root.querySelector("#x").onclick = closeDlg;
+      root.querySelector("#ok").onclick = () => {
+        state.meetings = state.meetings.filter(x => x.id !== id);
+        if (state.current === id) { const r = byRecent()[0]; state.current = r ? r.id : null; }
+        save(); closeDlg(); render(); toast("Meeting deleted");
+      };
+    });
+  }
+
+  // ---------- Add Member ----------
+  $("#btnAdd").addEventListener("click", () => {
+    openDlg(`
+      <h2>Add Member</h2>
+      <div class="field"><label class="lbl" for="mName">Name</label><input type="text" id="mName" autocomplete="off" autocapitalize="words"></div>
+      <div class="hint">Tip: paste several names separated by new lines or semicolons to add them at once.</div>
+      <div class="actions"><button class="sec" id="x">Cancel</button><button id="ok">Add</button></div>`,
+    root => {
+      const inp = root.querySelector("#mName"); setTimeout(() => inp.focus(), 50);
+      root.querySelector("#x").onclick = closeDlg;
+      const go = () => {
+        const names = inp.value.split(/[\n;]+/).map(s => s.trim().replace(/\s+/g," ")).filter(Boolean);
+        if (!names.length) return toast("Enter a name");
+        let added = 0, dup = 0;
+        names.forEach(n => {
+          if (state.members.some(m => m.name.toLowerCase() === n.toLowerCase())) { dup++; return; }
+          state.members.push({ id: uid(), name: n }); added++;
+        });
+        save(); render();
+        if (added) { closeDlg(); toast(added + " added" + (dup ? ", " + dup + " already on list" : "")); }
+        else toast("Already on the list");
+      };
+      root.querySelector("#ok").onclick = go;
+      inp.onkeydown = e => { if (e.key === "Enter") go(); };
+    });
+  });
+
+  // ---------- Delete Member ----------
+  $("#btnDelMember").addEventListener("click", () => {
+    const ms = sortedMembers();
+    if (!ms.length) return toast("No members to delete");
+    openDlg(`
+      <h2>Delete Member</h2>
+      <div class="pick">${ms.map(m => `<button data-id="${m.id}">${esc(m.name)}</button>`).join("")}</div>
+      <div class="actions"><button class="sec" id="x">Cancel</button></div>`,
+    root => {
+      root.querySelector("#x").onclick = closeDlg;
+      root.querySelectorAll(".pick button").forEach(b => b.onclick = () => confirmDeleteMember(b.dataset.id));
+    });
+  });
+  function confirmDeleteMember(id){
+    const m = state.members.find(x => x.id === id); if (!m) return;
+    openDlg(`
+      <h2>Delete member?</h2>
+      <p><b>${esc(m.name)}</b> will be removed from the list and from every meeting's attendance.</p>
+      <div class="actions"><button class="sec" id="x">Cancel</button><button class="danger" id="ok">Delete</button></div>`,
+    root => {
+      root.querySelector("#x").onclick = closeDlg;
+      root.querySelector("#ok").onclick = () => {
+        state.members = state.members.filter(x => x.id !== id);
+        state.meetings.forEach(mt => delete mt.attendance[id]);
+        save(); closeDlg(); render(); toast("Member deleted");
+      };
+    });
+  }
+
+  // ---------- CSV ----------
+  function csvCell(v){ v = String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; }
+  function buildCSV(){
+    // columns oldest → newest
+    const meetings = [...state.meetings].sort((a,b) => a.date.localeCompare(b.date) || a.created - b.created);
+    const header = ["Member", ...meetings.map(label)];
+    const rows = sortedMembers().map(mem => [mem.name, ...meetings.map(mt => mt.attendance[mem.id] ? 1 : 0)]);
+    return [header, ...rows].map(r => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  }
+  function downloadCSV(){
+    const blob = new Blob(["\ufeff" + buildCSV()], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "Attendance.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  // ---------- GitHub push ----------
+  const FOLDER = "Meeting Results", FILE = "Attendance.csv";
+  const b64 = str => { const bytes = new TextEncoder().encode(str); let s = ""; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s); };
+
+  async function pushToGitHub(){
+    const c = getCfg();
+    if (!c.owner || !c.repo || !c.token) throw new Error("GitHub settings are incomplete");
+    const branch = c.branch || "main";
+    const path = [FOLDER, FILE].map(encodeURIComponent).join("/");
+    const url = `https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${path}`;
+    const headers = { "Authorization": "Bearer " + c.token, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+
+    let sha;
+    const g = await fetch(url + "?ref=" + encodeURIComponent(branch), { headers });
+    if (g.ok) sha = (await g.json()).sha;
+    else if (g.status !== 404) throw new Error(await ghErr(g));
+
+    const body = { message: "Update attendance " + new Date().toISOString().slice(0,16).replace("T"," "),
+                   content: b64("\ufeff" + buildCSV()), branch };
+    if (sha) body.sha = sha;
+    const p = await fetch(url, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!p.ok) throw new Error(await ghErr(p));
+    return (await p.json()).content.html_url;
+  }
+  async function ghErr(res){
+    let msg = ""; try { msg = (await res.json()).message; } catch(e){}
+    if (res.status === 401) return "GitHub rejected the token (401). Check it hasn't expired.";
+    if (res.status === 403 || res.status === 404) return `GitHub says ${res.status}${msg ? ": " + msg : ""}. Check the repo name and that the token has Contents: Read and write on it.`;
+    return `GitHub error ${res.status}${msg ? ": " + msg : ""}`;
+  }
+
+  // ---------- Generate List ----------
+  $("#btnGen").addEventListener("click", () => {
+    if (!state.meetings.length || !state.members.length) return toast("Add members and a meeting first");
+    const c = getCfg(), ready = c.owner && c.repo && c.token;
+    openDlg(`
+      <h2>Generate List</h2>
+      <p style="margin-top:0">${state.members.length} members × ${state.meetings.length} meetings.</p>
+      ${ready
+        ? `<p>Saves <b>${esc(FOLDER)}/${FILE}</b> to <b>${esc(c.owner)}/${esc(c.repo)}</b> (${esc(c.branch||"main")}).</p>`
+        : `<p class="hint">GitHub isn't set up yet — open Settings (⚙︎) to enable saving to your repo.</p>`}
+      <div class="actions" style="flex-wrap:wrap">
+        <button class="sec" id="x">Cancel</button>
+        <button class="sec" id="dl">Download CSV</button>
+        <button id="gh" ${ready?"":"disabled"}>Save to GitHub</button>
+      </div>
+      <div class="hint" id="status"></div>`,
+    root => {
+      root.querySelector("#x").onclick = closeDlg;
+      root.querySelector("#dl").onclick = () => { downloadCSV(); closeDlg(); toast("CSV downloaded"); };
+      const gh = root.querySelector("#gh"), st = root.querySelector("#status");
+      gh.onclick = async () => {
+        gh.disabled = true; st.textContent = "Saving…";
+        try { await pushToGitHub(); closeDlg(); toast("Saved to GitHub ✓"); }
+        catch(err){ gh.disabled = false; st.textContent = (err && err.message) || "Failed"; st.style.color = "var(--danger)"; }
+      };
+    });
+  });
+
+  // ---------- Settings ----------
+  $("#btnSettings").addEventListener("click", () => {
+    const c = getCfg();
+    openDlg(`
+      <h2>GitHub settings</h2>
+      <div class="field"><label class="lbl">Owner (user or organisation)</label><input type="text" id="gOwner" value="${esc(c.owner||"")}" autocapitalize="none" autocomplete="off"></div>
+      <div class="field"><label class="lbl">Repository</label><input type="text" id="gRepo" value="${esc(c.repo||"")}" autocapitalize="none" autocomplete="off"></div>
+      <div class="field"><label class="lbl">Branch</label><input type="text" id="gBranch" value="${esc(c.branch||"main")}" autocapitalize="none" autocomplete="off"></div>
+      <div class="field"><label class="lbl">Personal access token</label><input type="password" id="gToken" value="${esc(c.token||"")}" autocomplete="off">
+        <div class="hint">Use a fine-grained token limited to this one repo with <b>Contents: Read and write</b>. It's stored only on this device.</div></div>
+      <div class="actions"><button class="sec" id="x">Close</button><button id="ok">Save</button></div>`,
+    root => {
+      root.querySelector("#x").onclick = closeDlg;
+      root.querySelector("#ok").onclick = () => {
+        setCfg({ owner: root.querySelector("#gOwner").value.trim(), repo: root.querySelector("#gRepo").value.trim(),
+                 branch: root.querySelector("#gBranch").value.trim() || "main", token: root.querySelector("#gToken").value.trim() });
+        closeDlg(); toast("Settings saved");
+      };
+    });
+  });
+
+  render();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+</script>
+</body>
+</html>
